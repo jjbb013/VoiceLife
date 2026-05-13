@@ -1,0 +1,67 @@
+{
+  "name": "ailife-backend",
+  "description": "AILife AI随身语音助手后端 - FastAPI + PostgreSQL + pgvector",
+  "version": "1.0.0",
+  "services": [
+    {
+      "name": "ailife-api",
+      "type": "combined",
+      "build": {
+        "type": "dockerfile",
+        "dockerfilePath": "/Dockerfile",
+        "context": "/"
+      },
+      "networking": {
+        "ports": [
+          {
+            "port": 8000,
+            "protocol": "HTTP"
+          }
+        ]
+      },
+      "resources": {
+        "compute": {
+          "cpu": 2,
+          "memory": 4096
+        }
+      },
+      "envVars": [
+        {
+          "name": "KIMI_API_KEY",
+          "description": "Moonshot Kimi API 密钥",
+          "required": true
+        },
+        {
+          "name": "HF_TOKEN",
+          "description": "HuggingFace Token（用于下载 pyannote 等模型）",
+          "required": true
+        },
+        {
+          "name": "WHISPER_MODEL",
+          "description": "Whisper 模型（tiny/base/small/medium/large-v3）",
+          "default": "large-v3"
+        },
+        {
+          "name": "BGE_MODEL",
+          "description": "BGE 嵌入模型名称",
+          "default": "BAAI/bge-small-zh-v1.5"
+        },
+        {
+          "name": "CORS_ORIGINS",
+          "description": "CORS 允许的源",
+          "default": "*"
+        }
+      ],
+      "addons": [
+        {
+          "name": "ailife-postgres",
+          "type": "postgresql",
+          "version": "15",
+          "plan": "nf-compute-50",
+          "storage": 10240,
+          "tlsEnabled": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+# ============================================================
+-- AILife Project - Standalone Database Docker Compose
+-- PostgreSQL 15 + pgvector
+-- ============================================================
+
+version: '3.8'
+
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: ailife-postgres
+    environment:
+      POSTGRES_USER: ailife
+      POSTGRES_PASSWORD: ailife_password
+      POSTGRES_DB: ailife
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Auto-run migrations on first container startup
+      - ./01_create_extensions.sql:/docker-entrypoint-initdb.d/01_create_extensions.sql
+      - ./02_create_tables.sql:/docker-entrypoint-initdb.d/02_create_tables.sql
+      - ./03_create_functions.sql:/docker-entrypoint-initdb.d/03_create_functions.sql
+      - ./05_create_triggers.sql:/docker-entrypoint-initdb.d/05_create_triggers.sql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ailife -d ailife"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ailife-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ailife.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    profiles:
+      - admin  # Only start with: docker-compose --profile admin up
+
+volumes:
+  postgres_data:
+    name: ailife_postgres_data
