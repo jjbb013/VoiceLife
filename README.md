@@ -1,6 +1,8 @@
-# AILife - AI 随身语音助手
+# VoiceLife - AI 随身语音助手
 
 基于声纹识别的随身 AI 语音记忆与智能分析助手。
+
+> **NorthFrank 部署适配版** | 原项目: AILife
 
 ## 技术栈
 
@@ -15,7 +17,7 @@
 ## 项目结构
 
 ```
-ailife/
+VoiceLife/
 ├── app/                          # 后端 FastAPI 应用
 │   ├── main.py                   # 应用入口
 │   ├── config.py                 # 配置管理
@@ -69,8 +71,8 @@ ailife/
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/YOUR_USERNAME/ailife.git
-cd ailife
+git clone https://github.com/jjbb013/VoiceLife.git
+cd VoiceLife
 
 # 2. 配置环境变量
 cp .env.example .env
@@ -102,8 +104,4 @@ uvicorn app.main:app --reload
 - **云端转写 + 摘要**: Whisper 转写 + Kimi 生成对话摘要
 - **人物档案**: 未知声纹可人工命名，建立人物卡片
 - **闪念胶囊**: 快速语音备忘
-- **AI 聊天**: 查询历史、人物、事件，基于结构化记忆回答
-
-## License
-
-MIT
+- **AI 聊天**: 查询历史、人
