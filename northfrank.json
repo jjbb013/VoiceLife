@@ -1,67 +1,345 @@
 {
-  "name": "ailife-backend",
-  "description": "AILife AI随身语音助手后端 - FastAPI + PostgreSQL + pgvector",
-  "version": "1.0.0",
-  "services": [
-    {
-      "name": "ailife-api",
-      "type": "combined",
-      "build": {
-        "type": "dockerfile",
-        "dockerfilePath": "/Dockerfile",
-        "context": "/"
-      },
-      "networking": {
-        "ports": [
-          {
-            "port": 8000,
-            "protocol": "HTTP"
+  "$schema": "https://api.northflank.com/v1/schemas/template",
+  "apiVersion": "v1.2",
+  "name": "ailife-template",
+  "description": "VoiceLife (AILife) AI随身语音助手 - FastAPI + PostgreSQL + pgvector",
+  "options": {
+    "autorun": false,
+    "concurrencyPolicy": "forbid",
+    "runOnUpdate": false
+  },
+  "arguments": {
+    "PROJECT_NAME": {
+      "type": "string",
+      "description": "Northflank 项目名称",
+      "default": "voice-life"
+    },
+    "PROJECT_REGION": {
+      "type": "string",
+      "description": "部署区域",
+      "default": "europe-west",
+      "enum": ["europe-west", "us-east", "us-west", "asia-east"]
+    },
+    "GITHUB_REPO": {
+      "type": "string",
+      "description": "GitHub 仓库地址",
+      "default": "https://github.com/jjbb013/VoiceLife"
+    },
+    "GITHUB_BRANCH": {
+      "type": "string",
+      "description": "GitHub 分支",
+      "default": "main"
+    },
+    "SERVICE_NAME": {
+      "type": "string",
+      "description": "API 服务名称",
+      "default": "ailife-api"
+    },
+    "WHISPER_MODEL": {
+      "type": "string",
+      "description": "Whisper 语音识别模型",
+      "default": "large-v3",
+      "enum": ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3"]
+    },
+    "KIMI_MODEL": {
+      "type": "string",
+      "description": "Kimi LLM 模型",
+      "default": "moonshot-v1-128k"
+    },
+    "CORS_ORIGINS": {
+      "type": "string",
+      "description": "CORS 允许的源（逗号分隔）",
+      "default": "*"
+    }
+  },
+  "argumentOverrides": {
+    "KIMI_API_KEY": {
+      "description": "Moonshot Kimi API 密钥 (sk-xxx)",
+      "secret": true
+    },
+    "HF_TOKEN": {
+      "description": "HuggingFace Token (hf_xxx，用于下载 pyannote 模型)",
+      "secret": true
+    }
+  },
+  "spec": {
+    "kind": "Workflow",
+    "spec": {
+      "type": "sequential",
+      "steps": [
+        {
+          "kind": "Project",
+          "ref": "project",
+          "spec": {
+            "name": "${args.PROJECT_NAME}",
+            "region": "${args.PROJECT_REGION}",
+            "description": "VoiceLife AI随身语音助手",
+            "color": "#4CAF50"
           }
-        ]
-      },
-      "resources": {
-        "compute": {
-          "cpu": 2,
-          "memory": 4096
-        }
-      },
-      "envVars": [
-        {
-          "name": "KIMI_API_KEY",
-          "description": "Moonshot Kimi API 密钥",
-          "required": true
         },
         {
-          "name": "HF_TOKEN",
-          "description": "HuggingFace Token（用于下载 pyannote 等模型）",
-          "required": true
-        },
-        {
-          "name": "WHISPER_MODEL",
-          "description": "Whisper 模型（tiny/base/small/medium/large-v3）",
-          "default": "large-v3"
-        },
-        {
-          "name": "BGE_MODEL",
-          "description": "BGE 嵌入模型名称",
-          "default": "BAAI/bge-small-zh-v1.5"
-        },
-        {
-          "name": "CORS_ORIGINS",
-          "description": "CORS 允许的源",
-          "default": "*"
-        }
-      ],
-      "addons": [
-        {
-          "name": "ailife-postgres",
-          "type": "postgresql",
-          "version": "15",
-          "plan": "nf-compute-50",
-          "storage": 10240,
-          "tlsEnabled": true
+          "kind": "Workflow",
+          "spec": {
+            "type": "sequential",
+            "context": {
+              "projectId": "${refs.project.id}"
+            },
+            "steps": [
+              {
+                "kind": "Workflow",
+                "spec": {
+                  "type": "parallel",
+                  "steps": [
+                    {
+                      "kind": "Addon",
+                      "ref": "ailife-db",
+                      "spec": {
+                        "name": "ailife-postgres",
+                        "type": "postgresql",
+                        "version": "15",
+                        "tlsEnabled": true,
+                        "externalAccessEnabled": false,
+                        "billing": {
+                          "deploymentPlan": "nf-compute-50",
+                          "storageClass": "ssd",
+                          "storage": 10240,
+                          "replicas": 1
+                        },
+                        "backups": {
+                          "enabled": true,
+                          "schedule": "0 3 * * *"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "kind": "Workflow",
+                "spec": {
+                  "type": "sequential",
+                  "steps": [
+                    {
+                      "kind": "Condition",
+                      "spec": {
+                        "kind": "Addon",
+                        "spec": {
+                          "data": {
+                            "addonId": "${refs.ailife-db.id}"
+                          },
+                          "type": "running"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "CombinedService",
+                      "ref": "ailife-api",
+                      "spec": {
+                        "name": "${args.SERVICE_NAME}",
+                        "description": "AILife FastAPI 后端服务",
+                        "vcsData": {
+                          "projectType": "github",
+                          "projectUrl": "${args.GITHUB_REPO}",
+                          "projectBranch": "${args.GITHUB_BRANCH}"
+                        },
+                        "buildSettings": {
+                          "dockerfile": {
+                            "buildEngine": "kaniko",
+                            "dockerFilePath": "/Dockerfile",
+                            "dockerWorkDir": "/",
+                            "useCache": true,
+                            "buildkit": {
+                              "useInternalCache": true,
+                              "cacheStorageSize": 32768,
+                              "internalCacheStorage": 16384
+                            }
+                          }
+                        },
+                        "buildConfiguration": {
+                          "pathIgnoreRules": [
+                            "frontend",
+                            "db",
+                            "*.md",
+                            ".env.example",
+                            "tests"
+                          ],
+                          "isAllowList": false
+                        },
+                        "deployment": {
+                          "instances": 1,
+                          "docker": {
+                            "configType": "default"
+                          },
+                          "storage": {
+                            "ephemeralStorage": {
+                              "storageSize": 2048
+                            },
+                            "shmSize": 128
+                          }
+                        },
+                        "ports": [
+                          {
+                            "name": "http",
+                            "internalPort": 8000,
+                            "public": true,
+                            "protocol": "HTTP",
+                            "domains": [],
+                            "security": {
+                              "policies": [],
+                              "credentials": []
+                            },
+                            "disableNfDomain": false
+                          }
+                        ],
+                        "healthChecks": [
+                          {
+                            "protocol": "HTTP",
+                            "type": "readinessProbe",
+                            "path": "/health",
+                            "port": 8000,
+                            "initialDelaySeconds": 15,
+                            "periodSeconds": 30,
+                            "timeoutSeconds": 5,
+                            "failureThreshold": 3,
+                            "successThreshold": 1
+                          },
+                          {
+                            "protocol": "HTTP",
+                            "type": "livenessProbe",
+                            "path": "/health",
+                            "port": 8000,
+                            "initialDelaySeconds": 30,
+                            "periodSeconds": 60,
+                            "timeoutSeconds": 5,
+                            "failureThreshold": 3,
+                            "successThreshold": 1
+                          }
+                        ],
+                        "runtimeEnvironment": {
+                          "WHISPER_MODEL": "${args.WHISPER_MODEL}",
+                          "KIMI_MODEL": "${args.KIMI_MODEL}",
+                          "CORS_ORIGINS": "${args.CORS_ORIGINS}",
+                          "DATABASE_URL": "${refs.ailife-db.outputs.connectionString}",
+                          "KIMI_API_KEY": "${args.KIMI_API_KEY}",
+                          "HF_TOKEN": "${args.HF_TOKEN}",
+                          "HOST": "0.0.0.0",
+                          "PORT": "8000",
+                          "LOG_LEVEL": "INFO"
+                        },
+                        "runtimeFiles": {},
+                        "billing": {
+                          "deploymentPlan": "nf-compute-20",
+                          "buildPlan": "nf-compute-400-8"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "kind": "Workflow",
+                "spec": {
+                  "type": "parallel",
+                  "steps": [
+                    {
+                      "kind": "Condition",
+                      "spec": {
+                        "kind": "Service",
+                        "spec": {
+                          "data": {
+                            "serviceId": "${refs.ailife-api.id}"
+                          },
+                          "type": "running"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "Condition",
+                      "spec": {
+                        "kind": "Addon",
+                        "spec": {
+                          "data": {
+                            "addonId": "${refs.ailife-db.id}"
+                          },
+                          "type": "running"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "kind": "SecretGroup",
+                "ref": "ailife-secrets",
+                "spec": {
+                  "name": "ailife-secrets",
+                  "type": "secret",
+                  "secretType": "environment",
+                  "priority": 10,
+                  "secrets": {
+                    "variables": {
+                      "API_BASE_URL": "https://${refs.ailife-api.ports.http.dns}"
+                    },
+                    "files": {}
+                  },
+                  "addonDependencies": [
+                    {
+                      "addonId": "${refs.ailife-db.id}",
+                      "keys": [
+                        {
+                          "keyName": "connectionString",
+                          "aliases": ["DATABASE_URL"]
+                        },
+                        {
+                          "keyName": "host",
+                          "aliases": ["DATABASE_HOST"]
+                        },
+                        {
+                          "keyName": "port",
+                          "aliases": ["DATABASE_PORT"]
+                        },
+                        {
+                          "keyName": "database",
+                          "aliases": ["DATABASE_NAME"]
+                        },
+                        {
+                          "keyName": "username",
+                          "aliases": ["DATABASE_USER"]
+                        },
+                        {
+                          "keyName": "password",
+                          "aliases": ["DATABASE_PASSWORD"]
+                        }
+                      ]
+                    }
+                  ],
+                  "restrictions": {
+                    "restricted": true,
+                    "nfObjects": [
+                      {
+                        "id": "${refs.ailife-api.id}",
+                        "type": "service"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "kind": "Action",
+                "spec": {
+                  "kind": "Service",
+                  "spec": {
+                    "data": {
+                      "serviceId": "${refs.ailife-api.id}"
+                    },
+                    "type": "restart"
+                  }
+                }
+              }
+            ]
+          }
         }
       ]
     }
-  ]
+  }
 }

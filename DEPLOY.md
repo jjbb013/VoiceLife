@@ -1,129 +1,224 @@
-# AILife NorthFrank 部署指南
+# VoiceLife (AILife) Northflank 部署指南
 
 ## 前置要求
 
-1. [NorthFrank](https://northflank.com) 账号
-2. GitHub 账号（用于代码仓库）
+1. [Northflank](https://northflank.com) 账号
+2. GitHub 账号（已创建 `jjbb013/VoiceLife` 仓库）
 3. Kimi API Key（[申请地址](https://platform.moonshot.cn)）
 4. HuggingFace Token（[申请地址](https://huggingface.co/settings/tokens)）
 
-## 部署步骤
+---
 
-### 1. 创建 PostgreSQL Addons
+## 部署方式一：使用 Northflank Template（推荐）
 
-1. 在 NorthFrank 控制台中创建新项目
-2. 进入项目 -> Addons -> Create new addon
-3. 选择 **PostgreSQL**，版本 15
-4. 设置名称：`ailife-postgres`
-5. 启用 TLS
-6. 创建
+本项目包含 `northfrank.json` Template 文件，可一键部署所有基础设施。
 
-### 2. 连接 Addons 到 Secret Group
+### 步骤 1：创建 Template
 
-1. 进入 Secret Groups -> Create new secret group
-2. 命名：`ailife-secrets`
-3. 在 Linked Addons 中选择 `ailife-postgres`
-4. 选择 `DATABASE_URL` secret
+1. 登录 [Northflank 控制台](https://app.northflank.com)
+2. 进入你的 **Team** 页面
+3. 点击 **Templates** → **Create new template**
+4. 输入模板名称：`voice-life`
+5. 选择 **Code editor**（代码编辑器模式）
+6. 将 `northfrank.json` 文件的全部内容粘贴到编辑器中
+7. 点击 **Create template**
+
+### 步骤 2：配置 Secret Overrides
+
+Template 中定义了两个需要安全存储的参数，必须在运行前配置：
+
+1. 在 Template 页面点击 **Settings**
+2. 找到 **Argument overrides** 部分
+3. 添加以下密钥：
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| `KIMI_API_KEY` | `sk-xxxxxxxx` | 你的 Kimi API 密钥 |
+| `HF_TOKEN` | `hf_xxxxxxxx` | 你的 HuggingFace Token |
+
+4. 点击 **Save changes**
+
+### 步骤 3：运行 Template
+
+1. 在 Template 页面点击 **Run template**
+2. 可以修改参数（如项目名称、区域等），或使用默认值
+3. 点击 **Run**
+
+Template 将按顺序执行：
+1. 创建 Project（`voice-life`）
+2. 创建 PostgreSQL addon（`ailife-postgres`，自动安装 pgvector）
+3. 等待数据库就绪
+4. 创建 Combined Service（`ailife-api`），从 GitHub 构建
+5. 等待服务就绪
+6. 创建 Secret Group，将数据库连接信息注入服务
+7. 重启服务以应用新配置
+
+### 步骤 4：验证部署
+
+等待所有步骤完成后：
+
+```bash
+# 检查健康端点
+curl https://<你的服务域名>/health
+
+# 预期返回
+{"status":"ok","database":"connected"}
+```
+
+---
+
+## 部署方式二：手动创建（备用）
+
+如果不使用 Template，也可以手动创建各个资源。
+
+### 1. 创建项目
+
+1. Northflank 控制台 → **Projects** → **Create new project**
+2. 名称：`voice-life`
+3. 区域：`europe-west`
+4. 创建
+
+### 2. 创建 PostgreSQL Addon
+
+1. 进入项目 → **Addons** → **Create new addon**
+2. 类型：**PostgreSQL**
+3. 版本：`15`
+4. 名称：`ailife-postgres`
+5. 计费：`nf-compute-50`
+6. 存储：`10240 MB`
+7. 启用 **TLS**
+8. 创建
+
+### 3. 创建 Secret Group
+
+1. 项目 → **Secrets** → **Create Secret Group**
+2. 名称：`ailife-secrets`
+3. 添加环境变量：
+   - `KIMI_API_KEY` = 你的 Kimi API 密钥
+   - `HF_TOKEN` = 你的 HuggingFace Token
+   - `WHISPER_MODEL` = `large-v3`
+   - `KIMI_MODEL` = `moonshot-v1-128k`
+   - `CORS_ORIGINS` = `*`
+4. 在 **Linked Addons** 中关联 `ailife-postgres`
 5. 创建
 
-### 3. 部署后端服务
+### 4. 创建 Combined Service
 
-1. 将代码推送到 GitHub 仓库
-2. 在 NorthFrank 中创建 Service -> Combined service
-3. 配置：
-   - 名称：`ailife-api`
-   - 仓库：选择你的 GitHub 仓库
-   - 分支：`main`
-   - Build type：`Dockerfile`
-4. 在 Environment 中添加环境变量：
-   - `KIMI_API_KEY`：你的 Kimi API 密钥
-   - `HF_TOKEN`：你的 HuggingFace Token
-   - `WHISPER_MODEL`：large-v3（或根据 VPS 性能选择）
-5. 在 Secret Groups 中链接 `ailife-secrets`
-6. 创建服务
+1. 项目 → **Services** → **Create new service** → **Combined service**
+2. 名称：`ailife-api`
+3. 构建：
+   - **Repository**: `jjbb013/VoiceLife`
+   - **Branch**: `main`
+   - **Build type**: `Dockerfile`
+   - **Dockerfile path**: `/Dockerfile`
+4. 端口：
+   - 内部端口：`8000`
+   - 协议：`HTTP`
+   - 公开：是
+5. 环境变量：从 Secret Group `ailife-secrets` 导入
+6. 健康检查：
+   - 路径：`/health`
+   - 端口：`8000`
+   - 初始延迟：`15s`
+   - 周期：`30s`
+7. 资源：
+   - CPU：`1-2`
+   - 内存：`2-4 GB`
+   - 临时存储：`2 GB`
+8. 创建
 
-### 4. 首次部署后初始化数据库
+### 5. 配置前端 API URL
 
-服务启动后会自动执行 Alembic 迁移。可以通过以下方式验证：
+服务部署成功后，获取分配的域名，在前端配置：
 
-```bash
-# 查看服务日志，确认迁移成功
-curl https://your-service.northflank.app/health
+```env
+EXPO_PUBLIC_API_URL=https://<你的服务域名>
 ```
 
-### 5. 配置前端
-
-在前端的 `.env` 文件中设置 API URL：
-
-```
-EXPO_PUBLIC_API_URL=https://your-service.northflank.app
-```
-
-### 6. 构建前端 APK
-
-```bash
-cd ailife-app
-eas build --platform android --profile preview
-```
+---
 
 ## 环境变量说明
 
 | 变量 | 来源 | 说明 |
 |------|------|------|
-| `DATABASE_URL` | PostgreSQL addon 自动注入 | 数据库连接字符串 (asyncpg 格式) |
-| `PORT` | NorthFrank 自动分配 | 服务端口 |
-| `KIMI_API_KEY` | 手动配置 | Kimi API 密钥 |
-| `HF_TOKEN` | 手动配置 | HuggingFace Token |
-| `WHISPER_MODEL` | 手动配置（默认 large-v3） | Whisper 模型 |
-| `BGE_MODEL` | 手动配置（默认 BAAI/bge-small-zh-v1.5） | BGE 嵌入模型 |
-| `CORS_ORIGINS` | 手动配置（默认 *） | CORS 白名单 |
+| `DATABASE_URL` | PostgreSQL addon 自动注入 | 数据库连接字符串 |
+| `PORT` | Northflank 自动分配 | 服务端口（默认 8000） |
+| `KIMI_API_KEY` | **手动配置**（Secret） | Kimi API 密钥 |
+| `HF_TOKEN` | **手动配置**（Secret） | HuggingFace Token |
+| `WHISPER_MODEL` | Template 参数 | Whisper 模型选择 |
+| `KIMI_MODEL` | Template 参数 | Kimi 模型选择 |
+| `CORS_ORIGINS` | Template 参数 | CORS 白名单 |
 
-## 技术栈
+---
 
-- **Web 框架**: FastAPI + Uvicorn
-- **数据库**: PostgreSQL 15 + pgvector 扩展
-- **数据库迁移**: Alembic（应用启动时自动执行）
-- **数据库驱动**: asyncpg（原生异步 PostgreSQL）
-- **向量搜索**: pgvector <=> 操作符（原生 SQL）
-- **语音识别**: faster-whisper
-- **声纹识别**: SpeechBrain ECAPA-TDNN
-- **说话人分离**: pyannote.audio
-- **语义嵌入**: sentence-transformers (BGE)
-- **AI API**: Moonshot Kimi (OpenAI 兼容接口)
+## Northflank Template 架构
 
-## 数据库架构
+```
+northfrank.json (Template)
+│
+├─ Project: voice-life
+│
+├─ Workflow (sequential)
+│   │
+│   ├─ Addon: ailife-postgres (PostgreSQL 15 + pgvector)
+│   │
+│   ├─ Workflow (sequential)
+│   │   ├─ Condition: 等待数据库就绪
+│   │   ├─ CombinedService: ailife-api
+│   │   │   ├─ Build: Dockerfile (GitHub jjbb013/VoiceLife)
+│   │   │   ├─ Port: 8000 HTTP (公开)
+│   │   │   ├─ HealthCheck: /health
+│   │   │   └─ RuntimeEnv: DATABASE_URL, KIMI_API_KEY, HF_TOKEN, ...
+│   │   │
+│   │   ├─ Condition: 等待服务就绪
+│   │   │
+│   │   ├─ SecretGroup: ailife-secrets
+│   │   │   ├─ addonDependencies: ailife-postgres → DATABASE_URL
+│   │   │   └─ restrictions: 仅限 ailife-api 服务
+│   │   │
+│   │   └─ Action: 重启 ailife-api 服务
+```
 
-应用启动时会自动执行 Alembic 迁移，创建以下表：
+**Addon → Service 关联原理：**
+1. PostgreSQL addon 创建后输出连接信息（host, port, database, username, password, connectionString）
+2. SecretGroup 通过 `addonDependencies` 链接 addon，将连接密钥映射为环境变量
+3. SecretGroup 的 `restrictions` 限制只有 `ailife-api` 服务可以访问这些密钥
+4. 服务重启后，环境变量生效，应用通过 `DATABASE_URL` 连接到数据库
 
-| 表名 | 说明 | 向量字段 |
-|------|------|----------|
-| `speakers` | 说话人档案 | `embedding vector(192)` - 声纹向量 |
-| `recordings` | 录音会话 | - |
-| `utterances` | 语音转写片段 | `embedding vector(768)` - 语义向量 |
-| `events` | 提取事件 | - |
-| `todos` | 待办事项 | - |
-| `flash_memos` | 闪念笔记 | - |
-| `bill_notes` | 账单记录 | - |
-| `chat_sessions` | 聊天会话 | - |
-| `chat_messages` | 聊天消息 | - |
-| `weekly_reports` | 周报数据 | - |
+---
 
-### 向量搜索函数
+## 常见问题
 
-迁移脚本会自动创建以下 PostgreSQL 函数：
+### pgvector 扩展未启用？
 
-- `match_speakers(query_embedding, threshold, count, user_id)` - 声纹匹配
-- `match_utterances(query_embedding, threshold, count, user_id)` - 语义搜索
-- `get_user_weekly_stats(user_id, week_start, week_end)` - 周报统计
-- `get_speaker_timeline(speaker_id, limit)` - 说话人时间线
-- `search_speaker_utterances(embedding, threshold, count, speaker_id)` - 按说话人搜索
-- `get_recent_events(user_id, days)` - 近期事件
+Alembic 迁移会在应用启动时自动执行：
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
 
-## 注意事项
+如果失败，可以在 Northflank 控制台进入 addon → **Query** 标签，手动执行：
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+```
 
-- NorthFrank 免费额度有限，Whisper large-v3 模型需要较多内存，建议选择 nf-compute-100 或更高配置
-- pyannote 模型首次下载需要 HuggingFace Token，下载后会被缓存
-- 音频文件存储在容器内 `/app/data`，如需持久化请配置 Volume
-- 数据库连接使用 asyncpg 驱动，通过 DATABASE_URL 环境变量连接
-- pgvector 扩展在应用启动时自动启用
-- Alembic 迁移在应用启动时自动执行到最新版本
+### 模型下载失败？
+
+确保 `HF_TOKEN` 已正确配置，且该 Token 有权访问：
+- `pyannote/speaker-diarization-3.1`
+- `speechbrain/ecapa-tdnn`
+
+### 内存不足？
+
+Whisper large-v3 模型需要较多内存，建议：
+- 在 Template 参数中将 `WHISPER_MODEL` 改为 `medium`（2GB 内存可运行）
+- 或在 Northflank 控制台升级服务资源计划
+
+---
+
+## 资源参考
+
+- [Northflank Template 文档](https://northflank.com/docs/v1/application/infrastructure-as-code/write-a-template)
+- [Northflank Template Nodes](https://northflank.com/docs/v1/application/infrastructure-as-code/template-nodes)
+- [Northflank API 文档](https://northflank.com/docs/v1/api)
+- [VoiceLife GitHub 仓库](https://github.com/jjbb013/VoiceLife)
