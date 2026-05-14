@@ -176,6 +176,11 @@ async def diarize(
             {"speaker": "SPEAKER_01", "start": 3.8, "end": 8.2, "duration": 4.4},
         ]
     """
+    # Check if diarization is enabled
+    if os.getenv("ENABLE_DIARIZATION", "true").lower() in ("false", "0", "no", "off"):
+        logger.info("Speaker diarization is disabled (ENABLE_DIARIZATION=false)")
+        return []
+
     if not os.path.isfile(audio_path):
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 

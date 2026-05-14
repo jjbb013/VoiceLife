@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # 语音模型配置
     WHISPER_MODEL: str = "large-v3"
 
+    # 功能开关
+    ENABLE_DIARIZATION: bool = True  # 是否启用说话人分离（禁用可节省内存）
+
     # HuggingFace 配置
     HF_TOKEN: str = ""
 

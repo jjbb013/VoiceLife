@@ -282,14 +282,19 @@ async def process_audio(
         duration_sec = audio_meta["normalized"]["duration_sec"]
 
         # ------------------------------------------------------------------
-        # Step 2: Speaker diarization (who spoke when)
+        # Step 2: Speaker diarization (who spoke when) - optional
         # ------------------------------------------------------------------
-        from app.services.diarization_service import diarize
+        diarization_enabled = os.getenv("ENABLE_DIARIZATION", "true").lower() not in ("false", "0", "no", "off")
+        diarization_segments = []
 
-        diarization_segments = await diarize(normalized_path)
-        logger.info(
-            "Diarization completed: %d segments", len(diarization_segments),
-        )
+        if diarization_enabled:
+            from app.services.diarization_service import diarize
+            diarization_segments = await diarize(normalized_path)
+            logger.info(
+                "Diarization completed: %d segments", len(diarization_segments),
+            )
+        else:
+            logger.info("Speaker diarization is disabled (ENABLE_DIARIZATION=false)")
 
         # ------------------------------------------------------------------
         # Step 3: Whisper transcription
