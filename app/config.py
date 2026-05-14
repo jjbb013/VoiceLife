@@ -48,6 +48,7 @@ class Settings(BaseSettings):
 
     # AI API 配置
     KIMI_API_KEY: str = ""
+    KIMI_BASE_URL: str = "https://api.moonshot.cn/v1"
     KIMI_MODEL: str = "moonshot-v1-128k"
 
     # 语音模型配置
